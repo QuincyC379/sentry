@@ -9,7 +9,6 @@ import classNames from 'classnames';
 
 import ApiMixin from '../../mixins/apiMixin';
 import GroupStore from '../../stores/groupStore';
-import StreamTagStore from '../../stores/streamTagStore';
 import EnvironmentStore from '../../stores/environmentStore';
 import LoadingError from '../../components/loadingError';
 import LoadingIndicator from '../../components/loadingIndicator';
@@ -17,8 +16,6 @@ import ProjectState from '../../mixins/projectState';
 import Pagination from '../../components/pagination';
 import StreamGroup from '../../components/stream/group';
 import StreamActions from './../stream/actions';
-import StreamTagActions from '../../actions/streamTagActions';
-import AlertActions from '../../actions/alertActions';
 import StreamFilters from './../stream/filters';
 import StreamSidebar from './../stream/sidebar';
 import TimeSince from '../../components/timeSince';
@@ -29,7 +26,6 @@ import parseLinkHeader from '../../utils/parseLinkHeader';
 import {t, tn, tct} from '../../locale';
 import {setActiveEnvironment} from '../../actionCreators/environments';
 
-const MAX_TAGS = 500;
 const MAX_ITEMS = 25;
 const DEFAULT_SORT = 'date';
 const DEFAULT_STATS_PERIOD = '24h';
@@ -39,14 +35,11 @@ const Stream = createReactClass({
 
   propTypes: {
     environment: PropTypes.object,
+    tags: PropTypes.object,
+    tagsLoading: PropTypes.bool,
   },
 
-  mixins: [
-    Reflux.listenTo(GroupStore, 'onGroupChange'),
-    Reflux.listenTo(StreamTagStore, 'onStreamTagChange'),
-    ApiMixin,
-    ProjectState,
-  ],
+  mixins: [Reflux.listenTo(GroupStore, 'onGroupChange'), ApiMixin, ProjectState],
 
   getInitialState() {
     let searchId = this.props.params.searchId || null;
@@ -87,8 +80,6 @@ const Stream = createReactClass({
       error: false,
       query: hasQuery ? currentQuery.query : '',
       sort,
-      tags: StreamTagStore.getAllTags(),
-      tagsLoading: true,
       isSidebarVisible: false,
       processingIssues: null,
       hasEnvironmentsFeature,
@@ -103,7 +94,6 @@ const Stream = createReactClass({
 
     this.fetchSavedSearches();
     this.fetchProcessingIssues();
-    this.fetchTags();
   },
 
   componentDidMount() {
@@ -230,35 +220,6 @@ const Stream = createReactClass({
       error: error => {
         logAjaxError(error);
         // this is okay. it's just a ui hint
-      },
-    });
-  },
-
-  fetchTags() {
-    StreamTagStore.reset();
-    StreamTagActions.loadTags();
-
-    this.setState({
-      tagsLoading: true,
-    });
-
-    let params = this.props.params;
-    this.api.request(`/projects/${params.orgId}/${params.projectId}/tags/`, {
-      success: tags => {
-        let trimmedTags = tags.slice(0, MAX_TAGS);
-
-        if (tags.length > MAX_TAGS) {
-          AlertActions.addAlert({
-            message: t('You have too many unique tags and some have been truncated'),
-            type: 'warn',
-          });
-        }
-        this.setState({tagsLoading: false});
-        StreamTagActions.loadTagsSuccess(trimmedTags);
-      },
-      error: error => {
-        this.setState({tagsLoading: false});
-        StreamTagActions.loadTagsError();
       },
     });
   },
@@ -495,13 +456,6 @@ const Stream = createReactClass({
         groupIds,
       });
     }
-  },
-
-  onStreamTagChange(tags) {
-    // new object to trigger state change
-    this.setState({
-      tags: {...tags},
-    });
   },
 
   onSearch(query) {
@@ -774,7 +728,6 @@ const Stream = createReactClass({
               projectId={projectId}
               query={this.state.query}
               sort={this.state.sort}
-              tags={this.state.tags}
               searchId={searchId}
               queryCount={this.state.queryCount}
               queryMaxCount={this.state.queryMaxCount}
@@ -809,8 +762,8 @@ const Stream = createReactClass({
             <Pagination pageLinks={this.state.pageLinks} />
           </div>
           <StreamSidebar
-            loading={this.state.tagsLoading}
-            tags={this.state.tags}
+            loading={this.props.tagsLoading}
+            tags={this.props.tags}
             query={this.state.query}
             onQueryChange={this.onSearch}
             orgId={params.orgId}
